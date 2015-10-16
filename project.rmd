@@ -1,0 +1,82 @@
+---
+title: "PML course project"
+author: "LN"
+date: "Monday, October 12, 2015"
+output: html_document
+---
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, and predict the manner in which they did the exercise. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. This is the "classe" variable (A, B, C, D, E) in the training set.  Using variables in the dataset, a model is created to predict how well the participant did the exercise.  The data for this project come from http://groupware.les.inf.puc-rio.br/har.
+
+###Cleaning the data set
+Load required libraries into RStudio
+```{r, echo=TRUE, warning=FALSE, message =FALSE}
+library(AppliedPredictiveModeling)
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+The train data set consists of 19622 observations of 160 variables and the test data set, 20 observations of 160 variables.  Looking at the structure of the data sets indicates there are variables containing mostly NAs or no data that will be used in the prediction.  Clean the train and test datasets to remove columns containing only NAs and columns containing identifiers and time stamps(columns 1-7).
+
+```{r,echo=TRUE}
+trainSet<-read.csv("pml-training.csv",header=TRUE,stringsAsFactors = TRUE, na.strings = c("NA", "#DIV/0!", ""))
+trainSet<- trainSet[,colSums(is.na(trainSet)) == 0] 
+trainSet<-trainSet[,8:60]
+
+
+testSet<-read.csv("pml-testing.csv",header=TRUE,stringsAsFactors = TRUE, na.strings = c("NA", "#DIV/0!", ""))
+testSet<- testSet[,colSums(is.na(testSet)) == 0] 
+testSet<-testSet[,8:60]
+
+```
+
+
+###Create the model
+A random forest model will be used to make predictions from the data.  This type of model was chosen for a number of reasons: 1) random forest models are very accurate, 2) rfs can handle large data sets, 3) rfs give estimates of which varaibles are important in classifying the data, 4) there is no need for cross validation as it is estimated internally as the model is created.
+
+Split the trainSet into training and validation sets.  The training set is 14718 obs of 53 variables and the validation set is 4909 obs. of 53 variables.
+
+```{r, echo=TRUE}
+set.seed(1234)
+inTrain = createDataPartition(trainSet$classe, p = 3/4)[[1]]
+training = trainSet[ inTrain,]
+validate = trainSet[-inTrain,]
+```
+
+Create a model using random forest method and determine the number of important variables to use in the final model using the 'importance' function.  Variables were chosen from the type 1 importance plot, MeanDecreaseAccuracy,   Figure 1 (below).  The mean decrease in accuracy coefficient tells how important each variable is in classifying the data.  The top 8 variables were chosen because they have the greatest affect or they are the largest distance away from the others on the importance plot. Variables below the top 8 have values that are very similar to each other.
+```{r,echo=TRUE}
+
+Fit.rf <- randomForest(classe~. , data=training,ntrees=501,keep.forest=FALSE,importance=TRUE)
+```
+
+Figure 1.
+```{r,echo=TRUE}
+varImpPlot(Fit.rf,type=1)
+```
+
+Create the final model using the top 8 variables and the training data.  
+```{r,echo=TRUE}
+
+FitTopVar.rf<- randomForest(classe~yaw_belt+roll_belt+pitch_belt+magnet_dumbbell_z+pitch_forearm+magnet_dumbbell_y+gyros_arm_y+magnet_forearm_z, data=training)
+FitTopVar.rf
+```
+The Out of Bag (OOB) error rate for this model is ~1%.  THis means the model misclassified only ~1.0% of the cases it tested in the "left out data set" (about 1/3 of the training set is left out for sampling with replacement (bootstrap sampling)) (see http://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr).
+
+
+Use the validation data set to check the accuracy of the model.
+```{r,echo=TRUE}
+
+predValid<-predict(FitTopVar.rf,validate)
+confusionMatrix(predValid,validate$classe)
+
+```
+
+The final model has an accuracy of ~99%. 
+It was used to predict the outcomes from the test data set.  These were submitted and found to be correct.
+```{r,echo=TRUE}
+answers<-predict(FitTopVar.rf,testSet)
+answers<-as.character(answers)
+answers
+```
